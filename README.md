@@ -35,17 +35,22 @@ A Go-based automated database backup service that backs up MySQL databases to Go
 - Google Cloud Project with Drive API enabled
 - OAuth2 credentials for Google Drive access
 
-## Installation
+## Installation and Usage via go get
 
-1. Clone the repository:
+You can use this package directly in your Go project by running the following command:
+
 ```bash
-git clone https://github.com/vfa-khuongdv/lazy.git
-cd lazy
+go get github.com/vfa-khuongdv/lazy
 ```
 
-2. Install dependencies:
-```bash
-go mod download
+After installation, you can import and use the functions from the package as shown below:
+
+```go
+import "github.com/vfa-khuongdv/lazy"
+
+func main() {
+    // Use functions from the lazy package
+}
 ```
 
 3. Set up Google OAuth2 credentials:
