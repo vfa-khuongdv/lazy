@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vfa-khuongdv/go-backup-drive/internal/database"
+	"github.com/vfa-khuongdv/lazy/internal/database"
 )
 
 // Manager handles multiple notification channels and message formatting

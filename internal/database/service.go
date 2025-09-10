@@ -61,6 +61,7 @@ func (s *Service) SaveTokenConfig(config *TokenConfig) error {
 
 	// Update existing record
 	config.ID = existing.ID
+	config.CreatedAt = existing.CreatedAt
 	return s.db.Save(config).Error
 }
 
@@ -158,7 +159,7 @@ func (s *Service) SaveNotificationConfig(config *NotificationConfig) error {
 
 	// Update existing record
 	config.ID = existing.ID
-	config.CreatedAt = existing.CreatedAt // preserve original CreatedAt
+	config.CreatedAt = existing.CreatedAt
 	return s.db.Save(config).Error
 }
 
@@ -194,4 +195,18 @@ func (s *Service) UpdateNotificationConfig(config *NotificationConfig) error {
 // DeleteNotificationConfig deletes notification configuration by name
 func (s *Service) DeleteNotificationConfig(name string) error {
 	return s.db.Where("name = ?", name).Delete(&NotificationConfig{}).Error
+}
+
+// DeleteNotificationConfigs deletes all notification configurations
+func (s *Service) DeleteAllNotificationConfig() error {
+	return s.db.Where("1 = 1").Delete(&NotificationConfig{}).Error
+}
+
+// Remove all jobs from scheduler
+func (s *Service) DeleteAllBackupConfig() error {
+	err := s.db.Where("1 = 1").Delete(&BackupConfig{}).Error
+	if err != nil {
+		return fmt.Errorf("failed to delete all backup configs: %w", err)
+	}
+	return nil
 }

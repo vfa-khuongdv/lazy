@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/vfa-khuongdv/go-backup-drive"
-	"github.com/vfa-khuongdv/go-backup-drive/internal/notification"
+	"github.com/vfa-khuongdv/lazy"
+	"github.com/vfa-khuongdv/lazy/internal/backup"
+	"github.com/vfa-khuongdv/lazy/internal/notification"
+	"golang.org/x/oauth2"
 )
 
 func main() {
-
 	// Create MySQL configuration for storing backup configurations
-	sqlConfig := backup.NewMySQLConfig(
+	sqlConfig := lazy.NewMySQLConfig(
 		"127.0.0.1",      // host
 		"3306",           // port
 		"root",           // user
@@ -19,15 +20,71 @@ func main() {
 		"golang_sync_db", // database name for storing configurations
 	)
 
-	config := &backup.Config{
-		ClientID:       "566118089952-r91h6t8an47ds3nc2f0vqk95h6k8udbe.apps.googleusercontent.com",
-		ClientSecret:   "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",
-		RedirectURL:    "http://localhost:8081/auth/google/callback",
-		DatabaseConfig: sqlConfig, // MySQL database for storing configurations
+	// Create OAuth2 Configuration
+	authConfig := &oauth2.Config{
+		ClientID:     "your-client-id",
+		ClientSecret: "your-client-secret",
+		RedirectURL:  "http://localhost:8081/auth/google/callback",
+	}
+
+	// Create scheduler configurations
+	schedules := []backup.SchedulerConfig{
+		{
+			Name:           "your-config-name", // Configuration name
+			BackupMode:     "full",             // Backup Mode (full data or only schema)
+			DatabaseConfig: sqlConfig,          // Database URL
+			CronExpression: "0 * * * * *",      // Cron schedule (every 1 minutes)
+		},
+	}
+
+	// Create notification configurations
+	notifications := []notification.NotificationConfig{
+		{
+			Name:    "chatwork-team",
+			Channel: string(notification.ChannelChatwork),
+			Config: map[string]interface{}{
+				"api_token": "your-chatwork-api-token",
+				"room_id":   "307079269",
+			},
+			NotifyOnSuccess: true,
+			NotifyOnError:   true,
+			Enabled:         true,
+		},
+		{
+			Name:    "discord-team",
+			Channel: string(notification.ChannelDiscord),
+			Config: map[string]interface{}{
+				"webhook_url": "your-discord-webhook-url",
+				"username":    "Database Backup Bot",
+				"avatar_url":  "https://example.com/bot.png",
+			},
+			NotifyOnSuccess: true,
+			NotifyOnError:   true,
+			Enabled:         true,
+		},
+		{
+			Name:    "slack-team",
+			Channel: string(notification.ChannelSlack),
+			Config: map[string]interface{}{
+				"webhook_url": "Your-slack-webhook-url",
+				"channel":     "#trading",
+				"username":    "DB Backup Service",
+			},
+			NotifyOnSuccess: true,
+			NotifyOnError:   true,
+			Enabled:         true,
+		},
+	}
+
+	lazyConfig := &lazy.Config{
+		OAuthConfig:        authConfig,
+		DatabaseConfig:     sqlConfig,
+		SchedulerConfig:    schedules,
+		NotificationConfig: notifications,
 	}
 
 	// create manager backup
-	manager, err := backup.NewBackupManager(config)
+	manager, err := lazy.NewBackupManager(lazyConfig)
 	if err != nil {
 		log.Fatalf("Failed to create backup manager: %v", err)
 	}
@@ -58,30 +115,6 @@ func main() {
 			log.Fatalf("Authentication failed: %v", err)
 		}
 	}
-
-	// Add a backup configuration
-	err = manager.AddBackupMySQLConfig(
-		"golang_sync_db_dev", // Configuration name
-		sqlConfig,            // Database URL
-		"0 * * * * *",        // Cron schedule (every 1 minutes)
-	)
-	if err != nil {
-		log.Fatalf("Failed to add backup config: %v", err)
-	}
-
-	// Add notify to chatwork
-	chatworkConfig := map[string]interface{}{
-		"api_token": "d34014530752cf959b0a4690a741b606",
-		"room_id":   "307079269",
-	}
-
-	manager.AddNotificationConfig(
-		"chatwork-team",
-		notification.ChannelChatwork,
-		chatworkConfig,
-		true, // Only notify on success
-		true, // Only notify on errors
-	)
 
 	// Keep the program running
 	select {}

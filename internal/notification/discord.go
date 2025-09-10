@@ -159,10 +159,8 @@ func (d *DiscordNotifier) getColorForType(msgType MessageType) int {
 		return 0xFF0000 // Red
 	case MessageTypeWarning:
 		return 0xFFFF00 // Yellow
-	case MessageTypeInfo:
-		return 0x0099FF // Blue
 	default:
-		return 0x808080 // Gray
+		return 0x0099FF // Blue
 	}
 }
 

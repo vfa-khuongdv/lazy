@@ -1,490 +1,296 @@
-# Database Backup to Google Drive
+# Lazy - Database Backup Service
 
-A comprehensive Go package for automated database backups to Google Drive with OAuth2 authentication, automatic token refresh, and cron-based scheduling.
+A Go-based automated database backup service that backs up MySQL databases to Google Drive with multi-channel notifications support.
 
 ## Features
 
-- 🔐 **OAuth2 Authentication**: Secure Google Drive API access with automatic token refresh
-- 📊 **Database Support**: MySQL (with plans for PostgreSQL)
-- ⏰ **Scheduled Backups**: Cron-based scheduling for automated backups
-- 📁 **Google Drive Integration**: Automatic folder creation and file organization
-- 📈 **Backup History**: Complete tracking of backup operations
-- 🗃️ **Configuration Management**: SQLite-based storage for backup configurations
-- 🔄 **Auto-Migration**: Database schema automatically migrates on startup
-- 🔔 **Multi-Channel Notifications**: Support for Discord, Slack, and Chatwork notifications
-- 📧 **Smart Alerts**: Configurable success/error notifications with rich formatting
+- **Automated MySQL Backups**: Schedule regular database backups using cron expressions
+- **Google Drive Integration**: Automatically upload backups to Google Drive with OAuth2 authentication
+- **Multi-Channel Notifications**: Send backup status notifications via Slack, Discord, and Chatwork
+- **Flexible Backup Modes**: Support for full backups (schema + data) or schema-only backups
+- **Web Interface**: RESTful API for managing backup configurations
+- **Backup History**: Track all backup operations with detailed logs
+- **Configuration Management**: Store and manage multiple backup configurations
+
+## Architecture
+
+```
+├── cmd/example/           # Example application entry point
+├── internal/
+│   ├── auth/             # OAuth2 authentication service
+│   ├── backup/           # Database backup implementations
+│   ├── database/         # Database models and service layer
+│   ├── notification/     # Multi-channel notification system
+│   └── scheduler/        # Cron-based job scheduling
+├── pkg/
+│   └── gdrive/          # Google Drive API integration
+└── lazy.go              # Main package interface
+```
+
+## Prerequisites
+
+- Go 1.25+
+- MySQL 5.7+ or 8.0+
+- `mysqldump` utility (usually comes with MySQL client)
+- Google Cloud Project with Drive API enabled
+- OAuth2 credentials for Google Drive access
 
 ## Installation
 
+1. Clone the repository:
 ```bash
-go get github.com/vfa-khuongdv/go-backup-drive
+git clone https://github.com/vfa-khuongdv/lazy.git
+cd lazy
 ```
 
-## Quick Start
+2. Install dependencies:
+```bash
+go mod download
+```
 
-### 1. Setup Google Drive API
+3. Set up Google OAuth2 credentials:
+   - Create a project in Google Cloud Console
+   - Enable Google Drive API
+   - Create OAuth2 credentials (Web application)
+   - Configure redirect URL: `http://localhost:8081/auth/google/callback`
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Google Drive API
-4. Create credentials (OAuth 2.0 Client ID)
-5. Download the client credentials
+## Configuration
 
-### 2. Basic Usage
+### Basic Usage
 
 ```go
 package main
 
 import (
-    "log"
-
-    backup "github.com/vfa-khuongdv/go-backup-drive"
+    "github.com/vfa-khuongdv/lazy"
+    "github.com/vfa-khuongdv/lazy/internal/backup"
+    "github.com/vfa-khuongdv/lazy/internal/notification"
+    "golang.org/x/oauth2"
 )
 
 func main() {
-    // Configuration
-    config := &backup.Config{
-        ClientID:     "your-google-oauth-client-id.apps.googleusercontent.com",
-        ClientSecret: "your-google-oauth-client-secret",
-        RedirectURL:  "http://localhost:8080/oauth2callback", // Required for OAuth2
+    // MySQL configuration for storing backup metadata
+    sqlConfig := lazy.NewMySQLConfig(
+        "localhost",     // host
+        "3306",         // port
+        "root",         // user
+        "password",     // password
+        "backup_db",    // database name
+    )
+
+    // OAuth2 configuration
+    authConfig := &oauth2.Config{
+        ClientID:     "your-client-id",
+        ClientSecret: "your-client-secret",
+        RedirectURL:  "http://localhost:8081/auth/google/callback",
     }
 
-    // Create backup manager
-    manager, err := backup.NewBackupManager(config)
+    // Backup schedules
+    schedules := []backup.SchedulerConfig{
+        {
+            Name:           "daily-backup",
+            BackupMode:     "full",
+            DatabaseConfig: sqlConfig,
+            CronExpression: "0 2 * * *", // Daily at 2 AM
+        },
+    }
+
+    // Notification configurations
+    notifications := []notification.NotificationConfig{
+        {
+            Name:    "slack-alerts",
+            Channel: "slack",
+            Config: map[string]interface{}{
+                "webhook_url": "your-slack-webhook-url",
+                "channel":     "#backups",
+            },
+            NotifyOnSuccess: true,
+            NotifyOnError:   true,
+            Enabled:         true,
+        },
+    }
+
+    config := &lazy.Config{
+        OAuthConfig:        authConfig,
+        DatabaseConfig:     sqlConfig,
+        SchedulerConfig:    schedules,
+        NotificationConfig: notifications,
+    }
+
+    manager, err := lazy.NewBackupManager(config)
     if err != nil {
-        log.Fatalf("Failed to create backup manager: %v", err)
+        log.Fatal(err)
     }
     defer manager.Close()
 
-    // Initialize and start scheduler
+    // Initialize and start
     if err := manager.Initialize(); err != nil {
-        log.Fatalf("Failed to initialize: %v", err)
+        log.Fatal(err)
     }
 
-    // Authenticate with Google Drive (first time only)
+    // First-time authentication
     if tokenInfo, _ := manager.GetTokenInfo(); !tokenInfo.HasToken {
         authURL := manager.GetAuthURL()
-        log.Printf("Visit: %s", authURL)
-
-        // Get authorization code from user
+        fmt.Printf("Visit: %s\n", authURL)
+        
         var authCode string
         fmt.Print("Enter authorization code: ")
         fmt.Scanln(&authCode)
-
+        
         if err := manager.SetAuthCode(authCode); err != nil {
-            log.Fatalf("Authentication failed: %v", err)
+            log.Fatal(err)
         }
     }
 
-    // Add a backup configuration
-    err = manager.AddBackupConfig(
-        "my-app-db",                           // Configuration name
-        "user:pass@tcp(localhost:3306)/mydb",  // Database URL
-        "mysql",                               // Database type
-        "0 2 * * *",                          // Cron schedule (daily at 2 AM)
-    )
-    if err != nil {
-        log.Fatalf("Failed to add backup config: %v", err)
-    }
-
-    // Keep the program running
+    // Keep running
     select {}
 }
 ```
 
-### 3. One-time Backup
+### Notification Channels
 
+#### Slack
 ```go
-// Perform immediate backup
-result, err := manager.BackupDatabase(
-    "user:pass@tcp(localhost:3306)/mydb",
-    "My Database Backups", // Google Drive folder name
-)
-if err != nil {
-    log.Fatalf("Backup failed: %v", err)
-}
-
-log.Printf("Backup successful! File ID: %s", result.FileID)
-log.Printf("Google Drive link: %s", result.WebViewLink)
-```
-
-## Configuration
-
-### Config Structure
-
-```go
-type Config struct {
-    // Required: Google OAuth2 credentials
-    ClientID     string
-    ClientSecret string
-
-    // Required: MySQL database configuration for storing package metadata
-    ConfigDatabase *backup.MySQLConfig
-
-    // Optional: Temporary directory for backup files
-    // Defaults to system temp directory
-    TempDir string
+{
+    Name:    "slack-team",
+    Channel: "slack",
+    Config: map[string]interface{}{
+        "webhook_url": "https://hooks.slack.com/services/...",
+        "channel":     "#backups",
+        "username":    "Backup Bot",
+    },
+    NotifyOnSuccess: true,
+    NotifyOnError:   true,
+    Enabled:         true,
 }
 ```
 
-### Database URL Formats
-
-#### MySQL
-
-```
-user:password@tcp(host:port)/database
-```
-
-Example:
-
-```
-myuser:mypass@tcp(localhost:3306)/mydatabase
-```
-
-## API Reference
-
-### BackupManager Methods
-
-#### Authentication
-
-- `GetAuthURL() string` - Get OAuth2 authorization URL
-- `SetAuthCode(authCode string) error` - Exchange authorization code for tokens
-- `GetTokenInfo() (*TokenInfo, error)` - Get current token information
-- `ValidateToken() error` - Validate current token
-
-#### Backup Configuration
-
-- `AddBackupConfig(name, databaseURL, databaseType, cronSchedule string) error`
-- `GetBackupConfigs() ([]BackupConfig, error)`
-- `UpdateBackupConfig(name, cronSchedule string, enabled bool) error`
-- `DeleteBackupConfig(name string) error`
-
-#### Manual Backups
-
-- `BackupNow(configName string) error` - Run configured backup immediately
-- `BackupDatabase(databaseURL, folderName string) (*BackupResult, error)` - One-time backup
-
-#### Monitoring
-
-- `GetBackupHistory(limit, offset int) ([]BackupHistory, error)`
-- `GetScheduledJobs() []JobInfo`
-- `GetNextRunTimes(cronExpr string, count int) ([]time.Time, error)`
-
-#### Google Drive
-
-- `ListBackupFiles(folderName string, maxResults int64) ([]*File, error)`
-- `DeleteBackupFile(fileID string) error`
-
-#### Notifications
-
-- `AddNotificationConfig(name, channel, config, notifyOnSuccess, notifyOnError) error`
-- `GetNotificationConfigs() ([]NotificationConfig, error)`
-- `UpdateNotificationConfig(name, enabled, notifyOnSuccess, notifyOnError) error`
-- `DeleteNotificationConfig(name string) error`
-- `TestNotification(configName string) error`
-
-## Cron Schedule Format
-
-The package uses cron expressions with support for seconds:
-
-```
-# ┌───────────── second (0 - 59)
-# │ ┌───────────── minute (0 - 59)
-# │ │ ┌───────────── hour (0 - 23)
-# │ │ │ ┌───────────── day of the month (1 - 31)
-# │ │ │ │ ┌───────────── month (1 - 12)
-# │ │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday)
-# │ │ │ │ │ │
-# │ │ │ │ │ │
-# * * * * * *
+#### Discord
+```go
+{
+    Name:    "discord-team",
+    Channel: "discord",
+    Config: map[string]interface{}{
+        "webhook_url": "https://discord.com/api/webhooks/...",
+        "username":    "Database Backup Bot",
+        "avatar_url":  "https://example.com/bot.png",
+    },
+    NotifyOnSuccess: true,
+    NotifyOnError:   true,
+    Enabled:         true,
+}
 ```
 
-### Examples:
+#### Chatwork
+```go
+{
+    Name:    "chatwork-team",
+    Channel: "chatwork",
+    Config: map[string]interface{}{
+        "api_token": "your-chatwork-api-token",
+        "room_id":   "room-id",
+    },
+    NotifyOnSuccess: true,
+    NotifyOnError:   true,
+    Enabled:         true,
+}
+```
+
+## Backup Modes
+
+- **full**: Complete backup including schema and data
+- **schema**: Schema-only backup (structure without data)
+
+## Cron Expression Examples
 
 - `0 2 * * *` - Daily at 2:00 AM
 - `0 */6 * * *` - Every 6 hours
-- `0 0 * * 1` - Every Monday at midnight
-- `30 2 1 * *` - First day of month at 2:30 AM
+- `0 0 * * 0` - Weekly on Sunday at midnight
+- `0 0 1 * *` - Monthly on the 1st at midnight
+
+## API Endpoints
+
+The service provides RESTful endpoints for managing configurations:
+
+- `GET /api/backups` - List backup configurations
+- `POST /api/backups` - Create backup configuration
+- `PUT /api/backups/{name}` - Update backup configuration
+- `DELETE /api/backups/{name}` - Delete backup configuration
+- `GET /api/history` - Get backup history
+- `POST /api/test-notification/{name}` - Test notification channel
+
+## Development
+
+### Running Tests
+```bash
+make test
+```
+
+### Building
+```bash
+make build
+```
+
+### Running Example
+```bash
+make run-example
+```
+
+### Code Quality
+```bash
+make lint
+make fmt
+```
 
 ## Database Schema
 
-The package automatically creates and manages these tables:
-
-### token_config
-
-Stores Google OAuth2 tokens with automatic refresh capability.
-
-### backup_configs
-
-Stores backup job configurations and schedules.
-
-### backup_histories
-
-Tracks all backup operations with status, file information, and error messages.
-
-## Error Handling
-
-The package provides detailed error information:
-
-```go
-result, err := manager.BackupDatabase(databaseURL, folderName)
-if err != nil {
-    log.Printf("Backup failed: %v", err)
-    // Handle specific error cases
-    return
-}
-```
-
-Common error scenarios:
-
-- Invalid database connection
-- Google Drive authentication issues
-- Network connectivity problems
-- Disk space limitations
-- Invalid cron expressions
-
-## Notifications
-
-The package supports multiple notification channels to alert you when backups complete or fail.
-
-### Supported Channels
-
-- **Discord**: Rich embed notifications with colors and fields
-- **Slack**: Formatted attachments with status colors
-- **Chatwork**: Simple text messages with emojis
-
-### Setting up Notifications
-
-#### Discord Webhook
-
-1. Go to your Discord server settings
-2. Navigate to Integrations > Webhooks
-3. Create a new webhook and copy the URL
-
-```go
-discordConfig := map[string]interface{}{
-    "webhook_url": "https://discord.com/api/webhooks/123456789/abcdefgh",
-    "username":    "Database Backup Bot",
-    "avatar_url":  "https://example.com/bot.png",
-}
-
-manager.AddNotificationConfig(
-    "discord-alerts",
-    notification.ChannelDiscord,
-    discordConfig,
-    true, // Notify on success
-    true, // Notify on error
-)
-```
-
-#### Slack Webhook
-
-1. Go to https://api.slack.com/apps
-2. Create a new app and enable Incoming Webhooks
-3. Create a webhook for your channel
-
-```go
-slackConfig := map[string]interface{}{
-    "webhook_url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXX",
-    "channel":     "#database-alerts",
-    "username":    "DB Backup Service",
-    "icon_emoji":  ":database:",
-}
-
-manager.AddNotificationConfig(
-    "slack-team",
-    notification.ChannelSlack,
-    slackConfig,
-    true, // Notify on success
-    true, // Notify on error
-)
-```
-
-#### Chatwork API
-
-1. Get your API token from Chatwork account settings
-2. Find the room ID from the room URL
-
-```go
-chatworkConfig := map[string]interface{}{
-    "api_token": "your-chatwork-api-token",
-    "room_id":   "123456789",
-}
-
-manager.AddNotificationConfig(
-    "chatwork-team",
-    notification.ChannelChatwork,
-    chatworkConfig,
-    false, // Don't notify on success
-    true,  // Only notify on errors
-)
-```
-
-### Testing Notifications
-
-```go
-// Send a test message to verify configuration
-if err := manager.TestNotification("discord-alerts"); err != nil {
-    log.Printf("Test failed: %v", err)
-}
-```
-
-### Managing Notifications
-
-```go
-// List all notification configurations
-configs, err := manager.GetNotificationConfigs()
-
-// Update notification preferences
-manager.UpdateNotificationConfig(
-    "slack-team",
-    true,  // enabled
-    false, // don't notify on success
-    true,  // notify on error
-)
-
-// Remove notification configuration
-manager.DeleteNotificationConfig("discord-alerts")
-```
-
-### Notification Message Examples
-
-**Success Message:**
-
-- ✅ Backup Completed: my-app-db
-- Database Type: mysql
-- File Name: myapp_backup_20231201_120000.sql
-- File Size: 15.2 MB
-- Duration: 45s
-- Google Drive Link: [View File]
-
-**Error Message:**
-
-- ❌ Backup Failed: my-app-db
-- Database Type: mysql
-- Duration: 30s
-- Error: Database connection failed: access denied
-
-## Monitoring and Logging
-
-### View Backup History
-
-```go
-history, err := manager.GetBackupHistory(20, 0) // Last 20 backups
-for _, h := range history {
-    log.Printf("Backup: %s - Status: %s", h.FileName, h.Status)
-}
-```
-
-### Monitor Scheduled Jobs
-
-```go
-jobs := manager.GetScheduledJobs()
-for _, job := range jobs {
-    log.Printf("Job: %s - Next run: %s", job.Name, job.Next.Format(time.RFC3339))
-}
-```
+The service uses the following tables:
+- `dbu_token_configs` - OAuth2 tokens
+- `dbu_backup_configs` - Backup configurations
+- `dbu_backup_histories` - Backup operation logs
+- `dbu_notification_configs` - Notification channel configurations
 
 ## Security Considerations
 
-1. **Credentials Storage**: Store OAuth2 credentials securely
-2. **Database URLs**: Avoid hardcoding database passwords
-3. **File Permissions**: Backup files have restricted permissions
-4. **Token Storage**: OAuth tokens are encrypted in SQLite database
-5. **Network Security**: Use TLS for all API communications
+- Store sensitive credentials (OAuth2 secrets, API tokens) securely
+- Use environment variables for production deployments
+- Regularly rotate API tokens and credentials
+- Ensure proper database access controls
+- Use HTTPS for webhook URLs
 
 ## Troubleshooting
 
 ### Common Issues
 
-**Authentication Failed**
+1. **mysqldump not found**: Ensure MySQL client tools are installed
+2. **Authentication failed**: Verify OAuth2 credentials and redirect URL
+3. **Database connection failed**: Check MySQL connection parameters
+4. **Notification delivery failed**: Verify webhook URLs and API tokens
 
-```bash
-Error: failed to refresh token
-```
+### Logs
 
-Solution: Re-authenticate using `GetAuthURL()` and `SetAuthCode()`
-
-**Database Connection Failed**
-
-```bash
-Error: database connection test failed
-```
-
-Solution: Verify database URL format and credentials
-
-**Backup File Upload Failed**
-
-```bash
-Error: failed to upload to Google Drive
-```
-
-Solution: Check Google Drive API quotas and network connectivity
-
-**Invalid Cron Expression**
-
-```bash
-Error: invalid cron expression
-```
-
-Solution: Verify cron format using online validators
-
-### Enable Debug Logging
-
-```go
-import "log"
-
-// Set log level for detailed debugging
-log.SetFlags(log.LstdFlags | log.Lshortfile)
-```
-
-## Examples
-
-See the `cmd/example/` directory for a comprehensive example with interactive menu.
-
-Run the example:
-
-```bash
-go run cmd/example/main.go
-```
+The service provides detailed logging for:
+- Backup operations
+- Authentication events
+- Notification delivery
+- Scheduler activities
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-## Roadmap
-
-- [ ] PostgreSQL support
-- [ ] Microsoft SQL Server support
-- [ ] Backup compression
-- [ ] Backup encryption
-- [ ] Backup retention policies
-- [ ] Email notifications
-- [ ] Webhook support
-- [ ] Docker support
-- [ ] Kubernetes operators
+3. Make your changes
+4. Add tests
+5. Run `make test` and `make lint`
+6. Submit a pull request
 
 ## License
 
-MIT License - see LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Support
 
-For support and questions:
-
+For issues and questions:
 - Create an issue on GitHub
-- Check existing issues for solutions
-- Review the example code in `cmd/example/`
-
----
-
-## Requirements
-
-- Go 1.19 or higher
-- MySQL client tools (`mysqldump`) for MySQL backups
-- Google Cloud Project with Drive API enabled
-- OAuth2 credentials for Google Drive access
+- Check the troubleshooting section
+- Review the example implementation in `cmd/example/`

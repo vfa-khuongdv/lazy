@@ -5,17 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vfa-khuongdv/go-backup-drive/internal/database"
+	"github.com/vfa-khuongdv/lazy/internal/database"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
 
+// DatabaseService interface defines the methods needed from database service
+type DatabaseService interface {
+	SaveTokenConfig(config *database.TokenConfig) error
+	GetTokenConfig() (*database.TokenConfig, error)
+}
+
 // Service handles OAuth2 authentication for Google Drive API
 type Service struct {
 	config    *oauth2.Config
-	dbService *database.Service
+	dbService DatabaseService
 }
 
 // TokenInfo represents token information for display
@@ -26,11 +32,11 @@ type TokenInfo struct {
 }
 
 // NewService creates a new auth service
-func NewService(clientID, clientSecret string, RedirectURL string, dbService *database.Service) *Service {
+func NewService(clientID, clientSecret string, redirectURL string, dbService DatabaseService) *Service {
 	config := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		RedirectURL:  RedirectURL,
+		RedirectURL:  redirectURL,
 		Scopes:       []string{drive.DriveFileScope},
 		Endpoint:     google.Endpoint,
 	}
@@ -96,7 +102,9 @@ func (s *Service) GetValidToken() (*oauth2.Token, error) {
 		// Update stored token if it was refreshed
 		if newToken.AccessToken != token.AccessToken {
 			tokenConfig.AccessToken = newToken.AccessToken
-			tokenConfig.RefreshToken = newToken.RefreshToken
+			if newToken.RefreshToken != "" {
+				tokenConfig.RefreshToken = newToken.RefreshToken
+			}
 			tokenConfig.Expiry = newToken.Expiry
 
 			if err := s.dbService.SaveTokenConfig(tokenConfig); err != nil {
@@ -158,4 +166,29 @@ func (s *Service) ValidateToken() error {
 	}
 
 	return nil
+}
+
+// RefreshToken refreshes the token and save it to the database
+func (s *Service) RefreshToken(token *oauth2.Token) (*oauth2.Token, error) {
+	tokenSource := s.config.TokenSource(context.Background(), token)
+	newToken, err := tokenSource.Token()
+	if err != nil {
+		return nil, fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	// Update stored token
+	tokenConfig := &database.TokenConfig{
+		ClientID:     s.config.ClientID,
+		ClientSecret: s.config.ClientSecret,
+		AccessToken:  newToken.AccessToken,
+		RefreshToken: newToken.RefreshToken,
+		TokenType:    newToken.TokenType,
+		Expiry:       newToken.Expiry,
+	}
+
+	if err := s.dbService.SaveTokenConfig(tokenConfig); err != nil {
+		return nil, fmt.Errorf("failed to save refreshed token: %w", err)
+	}
+
+	return newToken, nil
 }

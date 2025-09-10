@@ -52,3 +52,10 @@ backup_config.db
 config.yaml
 config.yml
 config.json
+
+# Ignore any other files that may contain sensitive information
+secrets.json
+credentials.json
+credentials.yaml
+.env
+build/

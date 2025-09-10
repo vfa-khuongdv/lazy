@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
-	"github.com/vfa-khuongdv/go-backup-drive/internal/backup"
-	"github.com/vfa-khuongdv/go-backup-drive/internal/database"
-	"github.com/vfa-khuongdv/go-backup-drive/internal/notification"
-	"github.com/vfa-khuongdv/go-backup-drive/pkg/gdrive"
+	"github.com/vfa-khuongdv/lazy/internal/backup"
+	"github.com/vfa-khuongdv/lazy/internal/database"
+	"github.com/vfa-khuongdv/lazy/internal/notification"
+	"github.com/vfa-khuongdv/lazy/pkg/gdrive"
 )
 
 // Service handles scheduled backup operations
@@ -38,7 +38,7 @@ func NewService(dbService *database.Service, driveService *gdrive.Service) *Serv
 	notifyManager := notification.NewManager(dbService)
 
 	return &Service{
-		cron:          cron.New(cron.WithSeconds()), // Support seconds in cron expressions
+		cron:          cron.New(cron.WithSeconds()),
 		dbService:     dbService,
 		driveService:  driveService,
 		notifyManager: notifyManager,
@@ -135,14 +135,6 @@ func (s *Service) ExecuteBackupNow(configName string) error {
 	return nil
 }
 
-// JobInfo contains information about a scheduled job
-type JobInfo struct {
-	Name     string       `json:"name"`
-	EntryID  cron.EntryID `json:"entry_id"`
-	Next     time.Time    `json:"next"`
-	Previous time.Time    `json:"previous"`
-}
-
 // loadAndScheduleConfigs loads backup configurations and schedules them
 func (s *Service) loadAndScheduleConfigs() {
 	configs, err := s.dbService.GetBackupConfigs()
@@ -161,7 +153,6 @@ func (s *Service) loadAndScheduleConfigs() {
 }
 
 // executeBackup performs the actual backup operation
-// TODO: Implement logic refreshToken when accessToken expired
 func (s *Service) executeBackup(config *database.BackupConfig) {
 	log.Printf("Starting backup job '%s'", config.Name)
 
@@ -191,10 +182,22 @@ func (s *Service) executeBackup(config *database.BackupConfig) {
 	}
 
 	// Perform backup
-	backupPath, err := backupService.BackupSchema(s.tempDir)
-	if err != nil {
-		s.updateBackupHistory(history, "failed", "", "", 0, fmt.Sprintf("Backup failed: %v", err))
-		return
+
+	var backupPath string
+
+	switch config.BackupMode {
+	case "full":
+		backupPath, err = backupService.BackupSchema(s.tempDir)
+		if err != nil {
+			s.updateBackupHistory(history, "failed", "", "", 0, fmt.Sprintf("Backup failed: %v", err))
+			return
+		}
+	case "schema":
+		backupPath, err = backupService.BackupSchemaOnly(s.tempDir)
+		if err != nil {
+			s.updateBackupHistory(history, "failed", "", "", 0, fmt.Sprintf("Backup failed: %v", err))
+			return
+		}
 	}
 
 	// Get file size

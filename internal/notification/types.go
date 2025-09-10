@@ -90,3 +90,12 @@ type NotificationResult struct {
 	SentAt    time.Time           `json:"sent_at"`
 	MessageID string              `json:"message_id,omitempty"`
 }
+
+type NotificationConfig struct {
+	Name            string                 `json:"name"`
+	Channel         string                 `json:"channel"`
+	Config          map[string]interface{} `json:"config"`
+	NotifyOnSuccess bool                   `json:"notify_on_success"`
+	NotifyOnError   bool                   `json:"notify_on_error"`
+	Enabled         bool                   `json:"enabled"`
+}

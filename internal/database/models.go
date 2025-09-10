@@ -40,6 +40,7 @@ type BackupHistory struct {
 type BackupConfig struct {
 	ID           uint      `json:"id" gorm:"primarykey"`
 	Name         string    `json:"name" gorm:"not null;unique"`
+	BackupMode   string    `json:"backup_mode" gorm:"not null"` // full, schema, data
 	DatabaseURL  string    `json:"database_url" gorm:"not null"`
 	DatabaseType string    `json:"database_type" gorm:"not null"` // mysql, postgres, etc.
 	CronSchedule string    `json:"cron_schedule" gorm:"not null"` // e.g., "0 2 * * *" (daily at 2 AM)
@@ -53,10 +54,10 @@ type NotificationConfig struct {
 	ID              uint                   `json:"id" gorm:"primarykey"`
 	Name            string                 `json:"name" gorm:"not null;unique"`
 	Channel         string                 `json:"channel" gorm:"not null"`
-	Enabled         bool                   `json:"enabled" gorm:"default:true"`
+	Enabled         bool                   `json:"enabled" gorm:"default:false"`
 	Config          map[string]interface{} `json:"config" gorm:"serializer:json"`
-	NotifyOnSuccess bool                   `json:"notify_on_success" gorm:"default:true"`
-	NotifyOnError   bool                   `json:"notify_on_error" gorm:"default:true"`
+	NotifyOnSuccess bool                   `json:"notify_on_success" gorm:"default:false"`
+	NotifyOnError   bool                   `json:"notify_on_error" gorm:"default:false"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
 }

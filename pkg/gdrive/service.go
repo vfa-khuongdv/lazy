@@ -7,20 +7,25 @@ import (
 	"path/filepath"
 	"time"
 
+	"golang.org/x/oauth2"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
-
-	"github.com/vfa-khuongdv/go-backup-drive/internal/auth"
 )
+
+// AuthService interface defines the methods needed from auth service
+type AuthService interface {
+	GetClient() (*oauth2.Config, *oauth2.Token, error)
+	RefreshToken(token *oauth2.Token) (*oauth2.Token, error)
+}
 
 // Service handles Google Drive operations
 type Service struct {
-	authService *auth.Service
+	authService AuthService
 }
 
 // NewService creates a new Google Drive service
-func NewService(authService *auth.Service) *Service {
+func NewService(authService AuthService) *Service {
 	return &Service{
 		authService: authService,
 	}
