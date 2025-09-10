@@ -5,8 +5,8 @@ import (
 	"log"
 
 	"github.com/vfa-khuongdv/lazy"
-	"github.com/vfa-khuongdv/lazy/internal/backup"
-	"github.com/vfa-khuongdv/lazy/internal/notification"
+	"github.com/vfa-khuongdv/lazy/pkg/backup"
+	"github.com/vfa-khuongdv/lazy/pkg/notification"
 	"golang.org/x/oauth2"
 )
 

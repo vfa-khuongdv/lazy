@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/vfa-khuongdv/lazy/internal/auth"
-	"github.com/vfa-khuongdv/lazy/internal/backup"
 	"github.com/vfa-khuongdv/lazy/internal/database"
-	"github.com/vfa-khuongdv/lazy/internal/notification"
 	"github.com/vfa-khuongdv/lazy/internal/scheduler"
+	"github.com/vfa-khuongdv/lazy/pkg/backup"
 	"github.com/vfa-khuongdv/lazy/pkg/gdrive"
+	"github.com/vfa-khuongdv/lazy/pkg/notification"
 	"golang.org/x/oauth2"
 )
 
